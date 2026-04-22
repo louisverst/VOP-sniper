@@ -7,6 +7,11 @@ import matplotlib.pyplot as plt
 import sqlite3
 
 
+def _snap(x):
+    """Round to nearest 0.25 (i.e. 0.00, 0.25, 0.50, 0.75)."""
+    return np.round(np.asarray(x) * 4) / 4
+
+
 class PicsData:
     def __init__(self, db_filename: str):
         con = sqlite3.connect(db_filename)
@@ -20,15 +25,15 @@ class PicsData:
         self.addr = [t[0] for t in data]
         self.instr_type = [t[1] for t in data]
 
-        self.base     = np.array([t[2] for t in data])
-        self.fe_stall = np.array([t[3] for t in data])
-        self.be_stall = np.array([t[4] for t in data])
-        self.mispred  = np.array([t[5] for t in data])
+        self.base     = _snap([t[2] for t in data])
+        self.fe_stall = _snap([t[3] for t in data])
+        self.be_stall = _snap([t[4] for t in data])
+        self.mispred  = _snap([t[5] for t in data])
 
-        self.compute = np.array([t[6] for t in data])
-        self.drained = np.array([t[7] for t in data])
-        self.stalled = np.array([t[8] for t in data])
-        self.flushed = np.array([t[9] for t in data])
+        self.compute = _snap([t[6] for t in data])
+        self.drained = _snap([t[7] for t in data])
+        self.stalled = _snap([t[8] for t in data])
+        self.flushed = _snap([t[9] for t in data])
 
 
 class PICS_d:
@@ -145,4 +150,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     data = PicsData(args.db_file)
-    plot_pics(data, args.amount, args.title, 'out/' + args.title)
+    plot_pics(data, args.amount, args.title, args.title + '.png')
