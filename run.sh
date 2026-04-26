@@ -7,8 +7,6 @@ else
 	exit 0
 fi
 
-cd ~/sniper
-rm -rf out
 mkdir -p out 
 
-python3 ./snipersim/run-sniper --sde-arch=future -d ./out $PROG 
+python3 snipersim/run-sniper --sde-arch=future -d ./out $PROG 

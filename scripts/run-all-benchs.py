@@ -9,7 +9,7 @@ REPO_ROOT   = Path(__file__).resolve().parent.parent
 MICROBENCH  = REPO_ROOT / 'microbench'
 RUN_ROI     = REPO_ROOT / 'run-roi.sh'
 PLOT_PY     = REPO_ROOT / 'scripts' / 'plot.py'
-OUT_DB      = REPO_ROOT / 'scripts' / 'out' / 'db'
+OUT_DB      = REPO_ROOT / 'scripts'  / 'out' / 'db'
 OUT_PLOTS   = REPO_ROOT / 'scripts' / 'out' / 'plots'
 SNIPER_OUT  = Path.home() / 'sniper' / 'out' / 'sim.stats.sqlite3'
 
@@ -48,7 +48,7 @@ def main():
             continue
 
         print(f'\n[{name}] Running...')
-        rc = run(['bash', str(RUN_ROI), str(bench_bin)])
+        rc = run(['bash', str(RUN_ROI), str(bench_bin)], cwd=REPO_ROOT)
         if rc != 0:
             print(f'[{name}] simulation failed, skipping', file=sys.stderr)
             failed.append(name)
