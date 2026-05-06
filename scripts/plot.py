@@ -147,7 +147,8 @@ if __name__ == '__main__':
     parser.add_argument('db_file')
     parser.add_argument('-n', '--amount', type=int, required=True)
     parser.add_argument('-t', '--title',  required=True)
+    parser.add_argument('-o', '--output', default=None)
     args = parser.parse_args()
 
     data = PicsData(args.db_file)
-    plot_pics(data, args.amount, args.title, args.title + '.png')
+    plot_pics(data, args.amount, args.title, args.output or args.title + '.png')
