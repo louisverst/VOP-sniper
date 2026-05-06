@@ -21,6 +21,7 @@ OUT       = REPO_ROOT / 'out'
 
 LENS = [16384, 24576, 32768, 49152, 65536]
 
+# Regular expressions to find the definition of the LEN macro and to find the number of cache misses in sim.out
 _LEN_RE = re.compile(r'(#define\s+LEN\s+)(\d+)')
 _L1D_RE = re.compile(r'Cache L1-D.*?num cache misses\s*\|\s*(\d+)', re.DOTALL)
 
