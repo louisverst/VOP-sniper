@@ -152,7 +152,7 @@ def print_table(rows: list[dict]) -> None:
 
     # summary — PICS use static_cast<float> in to_cycles(), so single-precision
     # rounding accumulates proportionally to run length.  PICS_c has an additional
-    # constant ~3-cycle deficit from instructions still in-flight at ROI end.
+    # deficit from instructions still in-flight at ROI end.
     def passes(r):
         tol_d = max(1.0, r['cycles'] * 1e-5)   # 0.001 % of ROB cycles
         tol_c = max(5.0, r['cycles'] * 1e-5)   # same + pipeline-tail slack
