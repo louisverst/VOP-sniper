@@ -11,7 +11,7 @@ RUN_ROI     = REPO_ROOT / 'run-roi.sh'
 PLOT_PY     = REPO_ROOT / 'scripts' / 'plot.py'
 OUT_DB      = REPO_ROOT / 'scripts'  / 'out' / 'db'
 OUT_PLOTS   = REPO_ROOT / 'scripts' / 'out' / 'plots'
-SNIPER_OUT  = Path.home() / 'sniper' / 'out' / 'sim.stats.sqlite3'
+SNIPER_OUT  = REPO_ROOT / 'out' / 'sim.stats.sqlite3'
 
 TOP_N = 5
 
