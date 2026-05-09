@@ -330,4 +330,4 @@ TSWLatexianTemp*
 out/
 scripts/out/
 microbench/*/bench
-
+*.png
