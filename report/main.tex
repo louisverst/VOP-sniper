@@ -57,6 +57,7 @@
 
 \hyphenation{cor-rect-heid}
 \hyphenation{uit-ge-voerd}
+\hyphenation{ge-ve-ri-fieerd}
 
 \thetitle{\color{ugentblue}Profileren van meerdradige applicaties met PICS}
 
@@ -95,7 +96,7 @@ Amdahl's law toont aan dat het relatieve belang van sequentiële code toeneemt n
 
 Daarvoor is inzicht nodig in waar de processorpijplijn tijd verliest bij de uitvoering van individuele instructies. Dit project focust op het profileren van meerdradige applicaties in de Sniper softwaresimulator, wat als doel heeft softwareontwikkelaars in staat te stellen om de CPU-prestatie van programmacode te visualiseren, om zo gerichte optimalisaties door te kunnen voeren. Het maakt gebruik van een recent voorgestelde profileringsmethode, de \textit{Per-Instruction Cycle Stacks (PICS)}. Om een uitgebreid profiel van de applicatie te verkrijgen, wordt het gedrag per instructie op twee plaatsen in de processorpijplijn onderzocht. Er wordt onderzocht hoe profileringsinformatie verzameld kan worden in de simulator voor applicaties die uitgevoerd worden op zowel enkele als meerdere cores - variërend van één tot honderden - met als doel inzicht te verkrijgen in de invloed van het gedrag van instructies in de processorpijplijn op de uiteindelijke uitvoeringstijd van een applicatie.
 
-Alle code die gebruikt werd voor de resultaten is beschikbaar op GitHub (https://github.com/louisverst/VOP-sniper). De broncode van de \textit{Sniper} simulator is inbegrepen als submodule.
+Alle code die gebruikt werd voor de resultaten is beschikbaar op GitHub\footnote{\url{https://github.com/louisverst/VOP-sniper}}. De broncode van de \textit{Sniper} simulator is inbegrepen als submodule.
 
 
 \newpage
@@ -238,7 +239,7 @@ In wat volgt zal er verder worden ingegaan op de implementatie van \textit{PICS}
 \label{subsection:PICS bij dispatch}
 
 Het doel van de implementatie bij \textit{dispatch} is om de latentie van elk \textit{dispatchslot} (\(1 / \textit{dispatchbreedte}\)) toe te wijzen aan de instructie die overeenkomt met de \textit{µop} verantwoordelijk voor de toestand van dat slot (zie sectie \ref{subsubsection:dispatch toestanden}).
-Op deze manier wordt elke \textit{dispatchcyclus} volledig geattribueerd: ofwel integraal aan één instructie, ofwel opgesplitst over meerdere instructies.
+Op deze manier wordt elke \textit{dispatchcyclus} volledig geattribueerd: ofwel aan één instructie, ofwel opgesplitst over meerdere instructies.
 
 In \textit{Sniper} wordt het mechanisme van \textit{dispatchslots} uitgebreid. Voor elke \textit{µop}, toegewezen aan een \textit{slot} wordt gecontroleerd of de backend voldoende hardware vrij heeft om de \textit{µop} te ontvangen.
 Daarnaast worden \textit{I-cache misses} en spronginstructies ook expliciet behandeld in de \textit{dispatchfase}.
@@ -484,6 +485,9 @@ Het correct zijn van de drie andere componenten wordt nu verder aangetoond.
 Het aantal cycli dat toegeschreven wordt aan de component \textit{misprediction} is afkomstig van foute voorspellingen. Om deze component te verifiëren wordt er gekeken naar een \textit{microbenchmark} met veel foutieve \textit{sprongvoorspellingen}, waarbij het aantal iteraties opnieuw wordt opgeschaald. Het verwachte resultaat is dat het opschalen van het aantal iteraties leidt tot meer foutieve sprongvoorspellingen wat op zijn beurt leidt tot meer cycli toegeschreven aan de \textit{misprediction} componenten.
 
 De gebruikte \textit{microbenchmarks} bestaat uit een lus met een willekeurige sprongconditie, waardoor er dus veel foute voorspellingen zullen zijn.
+
+\newpage
+
 \begin{lstlisting}[language=C]
     ...
     for(i=0; i < STEP + zero; i+=1) {
@@ -594,7 +598,7 @@ Omdat \verb|randArr| willekeurige waarden bevat, kan de sprongvoorspeller geen p
 Dit illustreert het belang van het gecombineerd bekijken van \textit{PICS} bij \textit{dispatch} en bij \textit{commit}, aangezien beide een complementair beeld geven en elk andere bottlenecks aan het licht brengen.
 \begin{figure}[H]
 \centering
-\makebox[\textwidth][c]{\includegraphics[width=1.2\textwidth]{PSum.png}}
+\makebox[\textwidth][c]{\includegraphics[width=1\textwidth]{PSum.png}}
 \caption{PICS van de PSum benchmark}
 \label{fig:PSum}
 \end{figure}
@@ -621,7 +625,7 @@ Als optimalisatie wordt de sprong geëlimineerd door de berekening van \verb|ind
 Door de lussen te splitsen verdwijnt de conditionele sprong volledig. Het gevolg is dat er een extra doorloop nodig is, maar doordat er geen foutieve voorspelling meer gemaakt worden zal het blijken dat er toch een nettoverbetering is, namelijk van \(16 583\) naar \(15 832\). Dit is duidelijk zichtbaar op Figuur \ref{fig:OPSum}. De foutieve sprongvoorspellingen zijn volledig weggewerkt.
 \begin{figure}[H]
     \centering
-    \makebox[\textwidth][c]{\includegraphics[width=1.2\textwidth]{OPSum.png}}
+    \makebox[\textwidth][c]{\includegraphics[width=1\textwidth]{OPSum.png}}
     \caption{PICS van OPSum}
     \label{fig:OPSum}
 \end{figure}
@@ -675,7 +679,7 @@ De \verb|add| op adres \verb|401780| is de eerste instructie die een \textit{loa
 Figuur \ref{fig:AA} toont duidelijk via de \textit{PICS} bij \textit{commit} dat de \verb|add| instructie die hierboven vermeld is de bottleneck is. Merkwaardig is dat de \textit{PICS} bij \textit{dispatch} de \verb|test| instructie aanduidt als bottleneck. Dit is echter te verwachten aangezien - bij constructie van de \textit{PICS} bij \textit{dispatch}, zie sectie \ref{subsection:PICS bij dispatch} - de cycli worden geattribueerd aan de instructie die op dat moment niet kan worden \textit{gedispatcht}. Op het moment dat de \verb|add| instructie wacht op een \textit{load}, staat de \verb|test| instructie als volgende klaar om \textit{gedispatcht} te worden en krijgt bijgevolg de cycli toegewezen. Dit toont opnieuw aan dat beide meetmomenten een complementair beeld geven en dat het visualiseren van de \textit{PICS} bij \textit{commit} essentieel is voor een correcte analyse.
 \begin{figure}[H]
     \centering
-    \makebox[\textwidth][c]{\includegraphics[width=1.2\textwidth]{AA.png}}
+    \makebox[\textwidth][c]{\includegraphics[width=1\textwidth]{AA.png}}
     \caption{PICS van AA}
     \label{fig:AA}
 \end{figure}
@@ -683,7 +687,7 @@ Figuur \ref{fig:AA} toont duidelijk via de \textit{PICS} bij \textit{commit} dat
 Als optimalisatie wordt er een afweging gemaakt binnen het alloceren van de \textit{tegelinkte lijst}. Er wordt gekozen om aan \textit{arena allocation} te doen. Dit wil zeggen dat wanneer de eerste knoop wordt gealloceerd, er onmiddellijk een groter blok wordt gealloceerd voor meerdere knopen. De volgende knopen worden dan gealloceerd door een pointer op te schuiven. Er moet echter een afweging gemaakt worden over hoeveel ruimte er wordt gealloceerd: een te groot blok reserveren verspilt mogelijks geheugen en maakt het moeilijker een vrije blok te vinden, terwijl een te klein blok weinig voordeel biedt. Als er wordt gewerkt met \textit{arena allocation} waarbij er onmiddellijk vijf knopen worden gealloceerd, zijn de bijhorende \textit{PICS} te zien in Figuur~\ref{fig:AA_opt}. Het aantal \textit{backend stall} cycli daalt van \(573 292\) naar \(376 733\), een daling van \(34\%\). Het initieel alloceren van meer knopen biedt echter een beperkt voordeel, aangezien de \textit{cachegrootte} een natuurlijke grens oplegt.
 \begin{figure}[H]
     \centering
-    \makebox[\textwidth][c]{\includegraphics[width=1.2\textwidth]{AA_opt.png}}
+    \makebox[\textwidth][c]{\includegraphics[width=1\textwidth]{AA_opt.png}}
     \caption{PICS van AAOpt}
     \label{fig:AA_opt}
 \end{figure}
