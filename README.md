@@ -52,3 +52,10 @@ plot.py [file] [-t] [-n] [-o]
 ```
 
 The `invariants/` directory contains scripts used to write the report (which can also be found under `report/`, but it does not serve as documentation).
+
+## Future work
+The following can still be improved on the implementation of PICS:
+  - Correct calculation when DVFS is enabled
+  - Taking TLB misses into account
+  - Instruction loss when switching out/in of DETAILED_MODE (don't know how much you can do about this)
+  - Showing what cores instructions are executed on with multicore
