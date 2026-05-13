@@ -33,7 +33,8 @@ The microbenchmarks make use of the *ROI* feature of the simulator. You can mark
 ## Running the simulator
 For detailed instructions on the usage of the simulator see https://github.com/louisverst/snipersim . `run.sh` and `run-roi.sh` provide a template to make repeated invocation of the simulator with arguments easier (like directing output to an `out/` directory with the `-d` flag).
 
-> IMPORTANT: Modern CPU's (such as the Intel Core Ultra 9) need to use the `--sde-arch=future` flag when running the simulator.
+> [!IMPORTANT]
+> Modern CPU's (such as the Intel Core Ultra 9) need to use the `--sde-arch=future` flag when running the simulator.
 
 
 ## PICS
