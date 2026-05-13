@@ -331,5 +331,6 @@ out/
 scripts/out/
 microbench/*/bench
 *.png
+!report/figures/*.png
 !main.pdf
 !report/figures/
