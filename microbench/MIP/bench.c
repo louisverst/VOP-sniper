@@ -3,7 +3,7 @@
 
 #define ASIZE 2048
 #define STEP   128
-#define ITERS   16
+#define ITERS   4
 
 __attribute__ ((noinline))
 int loop(int zero) {
@@ -11012,8 +11012,8 @@ int loop(int zero) {
 
 int main(int argc, char* argv[]) {
    argc&=10000;
-   ROI_BEGIN(); 
-   int t=loop(argc); 
+   ROI_BEGIN();
+   int t=loop(argc);
    ROI_END();
    volatile int a = t;
 }

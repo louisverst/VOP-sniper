@@ -5,6 +5,9 @@ Verify that total attributed PICS cycles == total simulated cycles.
 Usage:
   total.py [path]        path is an out-dir OR a directory of out-dirs
   total.py -B            run over all subdirs in scripts/out/
+
+
+Used to generate the table in section 6.1 of the report.
 """
 
 import argparse

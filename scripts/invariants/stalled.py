@@ -3,6 +3,8 @@
 Vary the LEN macro in microbench/MM/bench.c across a fixed set of values,
 recompile and simulate each under Sniper, then print a table and plot of
 L1-D cache misses vs PICS-attributed stalled cycles.
+
+Used to generate the figure in section 6.5 of the report.
 """
 
 import re
