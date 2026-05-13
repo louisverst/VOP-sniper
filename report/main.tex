@@ -1,0 +1,760 @@
+\documentclass[12pt,a4paper,faculty=ea,language=nl]{ugent-doc}
+
+\usepackage{todonotes}
+
+\usepackage{xurl}
+\usepackage[expansion=false]{microtype}
+
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    breaklinks=true,
+    urlcolor=black,
+    linkcolor=black,
+    citecolor=black
+}
+
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+
+\usepackage{float}
+\usepackage{pgfgantt}
+
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{fancyvrb}
+
+\lstset{
+    language=C,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    stringstyle=\color{red},
+    commentstyle=\color{green!70!black},
+    numbers=none,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    numbersep=10pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    captionpos=b,
+    breaklines=true,
+    breakatwhitespace=false,
+}
+
+\usepackage{amsmath}
+
+\usepackage{amsthm}
+
+\usepackage{amssymb}
+
+\renewcommand{\contentsname}{Inhoud}
+\renewcommand{\figurename}{Figuur}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.6em}
+
+\hyphenation{cor-rect-heid}
+\hyphenation{uit-ge-voerd}
+
+\thetitle{\color{ugentblue}Profileren van meerdradige applicaties met PICS}
+
+\infoboxa{\bfseries\large Project in het kader van  het Vakoverschrijdend Project, Groep BC01}
+
+\infoboxb{Promotor:
+\begin{tabular}[t]{l}
+    Prof.\ dr.\ ir.\ Lieven Eeckhout\\
+\end{tabular}
+\\[0.5em]
+Begeleiders:
+\begin{tabular}[t]{l}
+    ir.\ Ge Liu\\
+    dr.\ ir.\ Jaime Roelandts\\
+\end{tabular}
+}
+
+\infoboxc{Studenten:
+\begin{tabular}[t]{lll}
+    Tobe De Brabander & \href{mailto:tobe.debrabander@ugent.be}{tobe.debrabander@ugent.be}\\
+    Jaco Lagrange & \href{mailto:jaco.lagrange@ugent.be}{jaco.lagrange@ugent.be}\\
+    Louis Verstraeten & \href{mailto:louis.verstraeten@ugent.be}{louis.verstraeten@ugent.be}
+\end{tabular}
+}
+
+\infoboxd{Academiejaar: 2025--2026}
+
+\begin{document}
+\maketitle
+
+{\hypersetup{hidelinks}\tableofcontents}
+\newpage
+
+\section{Inleiding}
+Amdahl's law toont aan dat het relatieve belang van sequentiële code toeneemt naarmate de parallelle code versneld kan worden op gespecialiseerde acceleratoren. Met een toename in de adoptie en mogelijkheden van deze hardware neemt de impact van niet-versnelbare code op de totale prestatie van een applicatie toe. Softwareontwikkelaars zullen in de toekomst dus steeds aandacht moeten besteden aan het optimaliseren van de CPU-prestatie.
+
+Daarvoor is inzicht nodig in waar de processorpijplijn tijd verliest bij de uitvoering van individuele instructies. Dit project focust op het profileren van meerdradige applicaties in de Sniper softwaresimulator, wat als doel heeft softwareontwikkelaars in staat te stellen om de CPU-prestatie van programmacode te visualiseren, om zo gerichte optimalisaties door te kunnen voeren. Het maakt gebruik van een recent voorgestelde profileringsmethode, de \textit{Per-Instruction Cycle Stacks (PICS)}. Om een uitgebreid profiel van de applicatie te verkrijgen, wordt het gedrag per instructie op twee plaatsen in de processorpijplijn onderzocht. Er wordt onderzocht hoe profileringsinformatie verzameld kan worden in de simulator voor applicaties die uitgevoerd worden op zowel enkele als meerdere cores - variërend van één tot honderden - met als doel inzicht te verkrijgen in de invloed van het gedrag van instructies in de processorpijplijn op de uiteindelijke uitvoeringstijd van een applicatie.
+
+Alle code die gebruikt werd voor de resultaten is beschikbaar op GitHub (https://github.com/louisverst/VOP-sniper). De broncode van de \textit{Sniper} simulator is inbegrepen als submodule.
+
+
+\newpage
+
+
+\section{Context}
+In deze sectie wordt de breedere context waarin dit project kadert uiteengezet. Eerst wordt een fundamenteel concept uit het ontwerp van moderne, \textit{superscalaire} microprocessors besproken, namelijk \textit{out-of-order (OoO) execution}. Daarna worden ook de \textit{PICS} en de \textit{Sniper} simulator toegelicht.
+
+
+\subsection{Out-of-order execution}
+Een \textit{superscalaire} microprocessorkern is een kern die meer dan één instructie per klokcyclus kan uitvoeren. Om deze capaciteit in de praktijk te realiseren, wordt in de meeste moderne processorkernen gebruik gemaakt van \textit{OoO execution}. Instructies worden uitgevoerd los van hun volgorde in de programmacode - de \textit{programmavolgorde}. Daarentegen wordt de semantiek van de sequentiële uitvoering van instructies, zoals die in de programmacode staat, wel bewaard voor de bovenliggende software. Dit stelt programmeurs in staat uit te gaan van sequentiële instructies om makkelijker over programmacode te kunnen redeneren, terwijl de processorkern instructies kan uitvoeren in een volgorde die de doorvoer verhoogt. Instructies krijgen in  \textit{programmavolgorde} een slot gealloceerd in de \textit{reorder buffer (ROB)}, dit heet \textit{dispatch}. De \textit{ROB} is een hardwarestructuur die de boekhouding van de aanwezige instructies doet in een \textit{First-In, First-Out (FIFO)} wachtrij. Nadat een instructie \textit{dispatcht}, kan deze uitgevoerd worden in een volgorde die de processorpijplijn in staat stelt klokcycli maximaal te benutten. Na uitvoering wordt het effect van de instructies terug in \textit{programmavolgorde} zichtbaar gemaakt, wat \textit{commit} heet. Een kern die gebruikmaakt van \textit{OoO execution} wordt een \textit{OoO} kern genoemd.
+
+
+\subsubsection{Parallellisme op instructieniveau}
+Om meerdere instructies per cyclus uit te kunnen voeren, moet de kern al zeker meerdere instructies per cyclus uit het geheugen halen - d.i. \textit{fetchen} - en moet de hardware nodig om een instructie uit te voeren - zogenaamde \textit{execution units} - meerdere malen aanwezig zijn. Daarnaast moet er genoeg \textit{parallellisme} bestaan tussen de aanwezige instructies. Om efficiënt gebruik te maken van cycli, moeten er steeds instructies aanwezig zijn in de \textit{ROB} die niet afhankelijk zijn van andere, niet reeds uitgevoerde instructies. Een instructie die het resultaat nodig heeft van een eerdere instructie, moet immers wachten tot dat resultaat beschikbaar is, waardoor mogelijks een \textit{execution unit} cycli lang niets doet, wat een opportuniteitskost is.
+
+Om elke cyclus optimaal te benutten moeten er steeds uitvoerbare instructies zijn, wat beperkt wordt indien instructies strikt sequentiëel, in \textit{programmavolgorde} uitgevoerd worden. Het is deze beperking die \textit{OoO execution} probeert te omzeilen. Door toe te laten dat instructies uitgevoerd worden in een andere volgorde dan de \textit{programmavolgorde}, en dus meer instructies te beschouwen voor uitvoering, wordt het waarschijnlijker dat er steeds een uitvoerbare instructie beschikbaar is.
+
+\subsubsection{De out-of-order pijplijn}
+In deze sectie wordt in meer detail besproken hoe een instructie, van \textit{fetch} tot aan \textit{commit}, verwerkt wordt. Figuur \ref{fig:ooo-pipeline} toont een geabstraheerde, schematische voorstelling van een moderne \textit{OoO} pijplijn. De pijlen in stippellijn duiden op operaties die \textit{out-of-order} kunnen, zoals het naar de \textit{execution units} brengen - wat \textit{issue} genoemd wordt. De pijlen met een volle lijn zijn operaties die \textit{in-order} moeten gebeueren. De \textit{dispatch} en de \textit{commit} van instructies gebeurt dus altijd \textit{in-order}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\textwidth]{ooo_pipeline.png}
+    \caption{Schematische weergave van een out-of-order pijplijn. (Gebaseerd op \cite{h&p})}
+    \label{fig:ooo-pipeline}
+\end{figure}
+
+Instructies worden eerst uit het geheugen opgehaald - \textit{fetch}, waarna ze gedecodeerd worden. Bij \textit{complex instruction set computing (CISC)} architecturen (zoals \textit{x86}) kunnen instructies meer dan één operatie uitvoeren. Een instructie kan bijvoorbeeld zowel een waarde uit het geheugen halen en ook met die waarde een berekening uitvoeren. Na het \textit{decoderen} van de instructie onstaan twee \textit{micro-operaties (µops)}. Eén om naar het geheugen te gaan, en één om de berekening uit te voeren. Deze twee \textit{µops} worden afzonderlijk in de \textit{ROB} gebracht.  Een karakteriserende eigenschap van \textit{reduced instruction set computing (RISC)} architecturen (zoals ARM architecturen) is dat elke instructie slechts één operatie in de pijplijn uitvoert. Bijvoorbeeld enkel \textit{load}-instructies gaan naar het geheugen, terwijl bij \textit{CISC} ook een arithmetische instructie naar het geheugen kan gaan.
+
+Het ophalen van instructies gebeurt dus in \textit{programmavolgorde}. Op de figuur staan vier pijlen afgebeeld, wat zou impliceren dat er elke klokcyclus vier instructies uit het geheugen gehaald worden, het maximaal aantal instructies dat uit het geheugen kan gehaald worden verschilt echter per \textit{microarchitectuur}.
+
+Na \textit{dispatch} staan de slots in de \textit{ROB} corresponderend met de \textit{gedispatchte} \textit{µops} in \textit{programmavolgorde}. De \textit{µop} zal uitgevoerd worden - \textit{issue} - vanaf alle afhankelijke \textit{µops} klaar zijn en er een \textit{exeuction unit} beschikbaar is. Net als dat er bij \textit{fetch} elke cyclus meerdere instructies opgehaald kunnen worden, kunnen er ook elke cyclus meerdere \textit{µops} \textit{dispatchen}. Hoeveel er maximaal \textit{dispatchen}, is \textit{microarchitectuur}-afhankelijk, en niet noodzakelijk gelijk aan het aantal instructies dat \textit{gefetcht} worden.
+
+Elke cyclus probeert de hardware de oudste \textit{µop} te \textit{committen}. Deze staan in \textit{programmavolgorde} in de \textit{ROB} en \textit{committen} bijgevolg dus ook in \textit{programmavolgorde}. Na \textit{commit} is het effect van de instructie zichtbaar wordt in de \textit{architecturale staat}. Dit wil zeggen dat het resultaat bijvoorbeeld zichtbaar is in een register, of in het geheugen. Alles wat voor \textit{commit} gebeurt is speculatief, bij een foutieve \textit{sprongvoorspelling} worden er mogelijks \textit{µops} uitgevoerd waarvan het resultaat later wordt tenietgedaan. Wanneer een \textit{µop} \textit{commit}, komt het bijhorende slot in de \textit{ROB} vrij.
+
+\subsubsection{Onderbrekingen van de ideale instructiestroom}
+In het ideale, hypothetische geval worden elke cyclus het maximaal aantal instructies opgehaald uit het geheugen, \textit{dispatchen} er ook het maximaal aantal \textit{µops}, dit heet de \textit{dispatchbreedte} of het aantal \textit{dispatchslots}. Analoog \textit{committen} er in het ideale geval ook het maximaal aantal \textit{µops} per cyclus. Men spreekt van de \textit{commitbreedte} en het aantal \textit{commitslots}. Dit ideale scenario gebruikt de onrealistische veronderstelling dat elke instructie na één cyclus beschikbaar is, dat elke instructie in één cyclus kan uitgevoerd worden en dat er geen afhankelijkheden tussen instructies zijn. In realiteit kan men deze aannames niet maken en zijn er talloze redenen waarom de pijplijn kan \textit{stallen}, wat de stroom van instructies onderbreekt. De \textit{PICS}, die hieronder worden toegelicht, zullen deze opdelen in vier componenten.
+
+
+\subsection{Per-Instruction Cycle Stacks}
+De recent gepubliceerde papers \textit{TEA: Time-Proportional Event Analysis} \cite{tea2023} en \textit{Chips Need DIP: Time-Proportional Per-Instruction Cycle Stacks at Dispatch} \cite{dip2026} introduceren de \textit{PICS}. \textit{PICS} proberen de uitvoering van computerprogramma's te visualiseren, zodat kan worden geïdentificeerd welke instructies het meeste tijd kosten en waaraan die tijd precies wordt besteed. \textit{PICS} kunnen opgesteld worden zowel aan de \textit{dispatch}- als aan de \textit{commit}-fase. Echter zal blijken dat ze vaak een complementair beeld geven. Hierdoor is het belangrijk om beide te implementeren. Dit zal geïllustreerd worden aan de hand van een aantal voorbeelden in sectie \ref{sectie:resultaten}.
+
+\subsubsection{Correcte assignatie}
+Elke cyclus die een kern spendeert aan het uitvoeren van een programma moet niet alleen geattribueerd worden aan de statische instructie uit de programmacode die op dat moment de kern bezet, maar ook aan de juiste component van de bijhorende \textit{PICS}. Een component correspondeert met een onderliggende oorzaak van prestatieproblemen. Dit stelt ontwikkelaars in staat gerichte optimalisatiemogelijkheden te identificeren. Figuur \ref{fig:example_pics} toont een voorbeeld van \textit{PICS} voor vier instructies, zowel bij \textit{dispatch} als bij \textit{commit}, waar twee componenten duidelijk domineren. Welke componenten er beschouwd worden, wordt nu toegelicht.
+
+
+\subsubsection{Componenten bij dispatch}
+\label{subsubsection:dispatch toestanden}
+\begin{itemize}
+    \item \textbf{Base}: Er treden geen problemen op, alle \textit{dispatchslots} worden ingenomen.
+
+    \item \textbf{Frontend stall}: Niet alle \textit{dispatchslots} kunnen ingenomen worden doordat het ophalen van een instructie langer duurt door bijvoorbeeld een \textit{I-cache miss} (\textit{Instruction-cache miss}) of \textit{TLB-miss}.
+
+    \item \textbf{Backend stall}: Niet het maximaal aantal \textit{µops} kunnen \textit{dispatchen} doordat de \textit{ROB} volzet is. Dit is het gevolg van te veel \textit{µops} die nog bezig zijn met uitvoeren, of wachten op afhankelijke instructies.
+
+    \item \textbf{Misprediction}: Er werd een sprong verkeerd voorspeld. Daardoor komen er verkeerde instructies in de pijplijn en gaat er tijd verloren.
+\end{itemize}
+
+\subsubsection{Componenten bij commit}
+\label{subsubsection:commit toestanden}
+\begin{itemize}
+    \item \textbf{Compute}: De oudste \textit{µop} in de \textit{ROB} is klaar om te \textit{committen}, en de \textit{commitfase} kan zonder beperkingen doorgaan.
+
+    \item \textbf{Drained}: De \textit{ROB} is leeg, dus er is geen oudste \textit{µop} om te \textit{committen}.
+
+    \item \textbf{Stalled}: De oudste \textit{µop} in de \textit{ROB} is nog niet uitgevoerd. Daardoor kan deze niet \textit{committen}.
+
+    \item \textbf{Misprediction}: De \textit{ROB} is opnieuw leeg, maar dit keer omdat deze leeggemaakt is doordat deze gevuld geraakt is met verkeerde \textit{µops} ten gevolge van een foute sprongvoorspelling.
+\end{itemize}
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.90\textwidth]{example_pics.png}
+    \caption{Voorbeeld van PICS bij dispatch en bij commit voor vier instructies.}
+    \label{fig:example_pics}
+\end{figure}
+
+
+\subsubsection{Tijdsproportioneel}
+In de uiteindelijke profileringsinformatie is een correcte toewijzing van cycli aan statische instructies van groot belang (hierna kortweg instructies genoemd). Het is cruciaal dat deze profileringsinformatie tijdsproportioneel is: het belang van een instructie in het uiteindelijke profiel moet evenredig zijn met de relatieve bijdrage van die instructie aan de totale uitvoeringstijd. Dit vereist een nauwkeurige toewijzing - zonder cycli toe te kennen aan instructies die niet hebben bijgedragen aan de uitvoeringstijd, en zonder cycli te onthouden aan instructies die dat wel hebben gedaan.
+
+
+\subsection{Sniper simulator}
+De \textit{Sniper} simulator \cite{sniper} is een softwaregebaseerde simulator voor de \textit{x86 architectuur} die parallelle programma's kan simuleren. De simulator probeert de afweging te maken tussen simulatiesnelheid en nauwkeurigheid.
+
+Om maximale nauwkeurigheid te bereiken, zou de simulatie cyclus per cyclus moeten gebeuren. Dit zou echter ten koste gaan van de simulatiesnelheid, wat het praktisch gebruik niet werkbaar zou maken. Eén van de technieken om beiden te combineren is \textit{intervalsimulatie} \cite{sniper_web}. De uitvoering van een programma door een processorkern kan gezien worden als een stroom van instructies die onderbroken wordt door \textit{miss events} zoals \textit{cache misses}, \textit{sprongvoorspellingen}, etc. De simulator kan dus werken op een hoger abstractieniveau door tussen deze \textit{miss events} te springen en ertussen een constante stroom van instructies aan te nemen. Alhoewel deze techniek de eerder vermelde voordelen heeft, bemoeilijkt het de implementatie van \textit{PICS}'s.
+
+\section{Doelstellingen}
+Er bestaan reeds verschillende profileringsmethoden (\cite{acm}, \cite{arm}, \cite{micro}, en nog meer) die informatie kunnen genereren over de prestatie van applicaties, maar deze voldoen niet altijd tegelijkertijd aan beide vereisten voor een goede profileringsmethode (tijdsproportioneel en correcte assignatie). Daarnaast is het duidelijk dat profileren zowel bij \textit{dispatch} als bij \textit{commit} belangrijk is, aangezien dit vaak een complementair beeld oplevert.
+
+Het doel van dit project is dan ook om \textit{PICS} te implementeren op beide plaatsen in de pijplijn binnen de \textit{Sniper} simulator, en dit te valideren aan de hand van gerichte \textit{microbenchmarktests} (zie sectie \ref{sectie:invarianten}, de definitie van een \textit{microbenchmark}). De geïmplementeerde methoden zullen vervolgens worden geëvalueerd en bijgestuurd op basis van de verkregen resultaten.
+
+
+\section{Planning}
+De planning is weergegeven in Figuur~\ref{fig:planning}. Initieel was voor Fase 2 meer tijd voorzien, maar dankzij de kennis over de simulator en de aanpak om \textit{PICS} te implementeren, opgedaan tijdens Fase 1, konden bij \textit{PICS @ Commit} alle componenten tegelijk aangepakt worden, al is de inhoudelijke aanpak niet dezelfde. Hierdoor kon er vroeger worden begonnen aan het verslag en aan optimalisaties van enkele \textit{microbenchmarks}, waarover meer in de resultaten.
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}
+        \begin{ganttchart}[
+            hgrid,
+            vgrid,
+            x unit=0.8cm,
+            y unit chart=0.65cm
+        ]{1}{12}
+            \gantttitle{Planning (weken)}{12} \\
+            \gantttitlelist{1,...,12}{1} \\
+
+            \ganttgroup{Fase 1: PICS @ Dispatch}{1}{6} \\
+            \ganttbar{Implementatie: Base}{1}{2} \\
+            \ganttbar{Implementatie: Andere componenten}{3}{4} \\
+            \ganttbar{Verificatie: Benchmarks}{5}{5} \\
+            \ganttbar{Verificatie: Invarianten}{6}{6} \\
+
+            \ganttgroup{Fase 2: PICS @ Commit}{7}{10} \\
+            \ganttbar{Implementatie: Alle componenten}{7}{8} \\
+            \ganttbar{Verificatie: Benchmarks}{9}{9} \\
+            \ganttbar{Verificatie: Invarianten}{10}{10} \\
+
+            \ganttgroup{Fase 3: Verslag \& resultaten}{8}{12} \\
+        \end{ganttchart}
+    \end{tikzpicture}
+    \caption{Projectplanning}
+    \label{fig:planning}
+\end{figure}
+
+\section{Technische bespreking}
+Deze sectie zet de belangrijkste ideeën van de implementatie binnen de software uiteen. Er wordt een hoog niveau beeld gegeven van hoe de simulatie te werk gaat en hoe de \textit{PICS} geïmplementeerd worden.
+\subsection{Latentie}
+\label{subsec:Latentie}
+Aangezien de \textit{Sniper} simulator gebruik maakt van \textit{intervalsimulatie}, wordt er continu een latentie berekend tot de volgende gebeurtenis. Dit zogenaamd \textit{next event} bepaalt in de hoofdlus van de simulator het volgende relevante tijdstip, waarna de simulatie in één stap naar dat punt vooruit springt. Op dat moment wordt voor elke pijplijnfase opnieuw geëvalueerd of verdere voortgang mogelijk is. De pijplijn zelf wordt gemodelleerd aan de hand van drie hoofdfases - \textit{dispatch}, \textit{issue} en \textit{commit} - waarbij elke fase met een eigen set slots werkt en, op basis van de huidige toestand, bepaalt wanneer een volgende gebeurtenis kan plaatsvinden. Zolang er dus in minstens één van deze fases een slot is dat klaar is om te verwerken, zal de simulator blijven doorgaan. De latentie is dan gelijk aan één, want er wordt gesprongen naar de volgende cyclus.
+
+Binnen dit model is het belangrijk om latenties correct toe te wijzen aan de juiste instructies en om onderscheid te maken tussen de verschillende oorzaken van vertragingen. Zo zal bijvoorbeeld bij een \textit{cache-miss} een penalty worden toegevoegd aan de latentie, waardoor de volgende gebeurtenis later plaatsvindt. Deze latenties omvatten steeds alle cycli, zelfs wanneer het volgende event zich al in de eerstvolgende cyclus voordoet. Daarom is het idee om op het moment dat een vertraging start te markeren welke instructie hiervoor verantwoordelijk is, en vervolgens alle latenties tot het einde van die vertraging consequent aan deze instructie toe te wijzen.
+
+Belangrijk om op te merken is dat als de latentie gelijk is aan één we in een speciaal geval terecht komen waar ofwel in de huidige cyclus alles correct verloopt ofwel er een vertraging gestart is. Hier zal extra aandacht aan moeten worden besteed en er zal in dit specifieke geval geen attributie van cycli zijn a.d.h.v. het latentie mechanisme.
+
+In wat volgt zal er verder worden ingegaan op de implementatie van \textit{PICS} bij \textit{dispatch} en \textit{commit}.
+\subsection{Implementatie van PICS bij dispatch}
+\label{subsection:PICS bij dispatch}
+
+Het doel van de implementatie bij \textit{dispatch} is om de latentie van elk \textit{dispatchslot} (\(1 / \textit{dispatchbreedte}\)) toe te wijzen aan de instructie die overeenkomt met de \textit{µop} verantwoordelijk voor de toestand van dat slot (zie sectie \ref{subsubsection:dispatch toestanden}).
+Op deze manier wordt elke \textit{dispatchcyclus} volledig geattribueerd: ofwel integraal aan één instructie, ofwel opgesplitst over meerdere instructies.
+
+In \textit{Sniper} wordt het mechanisme van \textit{dispatchslots} uitgebreid. Voor elke \textit{µop}, toegewezen aan een \textit{slot} wordt gecontroleerd of de backend voldoende hardware vrij heeft om de \textit{µop} te ontvangen.
+Daarnaast worden \textit{I-cache misses} en spronginstructies ook expliciet behandeld in de \textit{dispatchfase}.
+Opdat een \textit{µop} \textit{gedispatcht} kan worden in \textit{Sniper}, wordt er gecontroleerd in welke van de vier toestanden zijn toegewezen \textit{dispatchslot} zich bevindt.
+O.b.v. die toestand wordt er bepaald wat er met de \textit{µop} en de \textit{dispatchflow} gebeurt. Er zijn twee mogelijkheden:
+\begin{enumerate}
+    \item De \textit{µop} wordt \textit{gedispatcht} en \textit{dispatchen} blijft doorgaan. Het slot bevindt zich in de \textit{base} toestand.
+    \item De \textit{µop} wordt al dan niet \textit{gedispatcht}, maar \textit{dispatchen} wordt onderbroken. Het slot bevindt zich in één van de andere drie toestanden.
+\end{enumerate}
+
+Deze twee gevallen worden hieronder verder toegelicht.
+
+\subsubsection{Base}
+
+
+Dit beschrijft de normale werking van de \textit{dispatchfase}. In dit geval ondervindt de \textit{µop} geen \textit{I-cache miss}, is er voldoende ruimte beschikbaar in de backend om nieuwe \textit{µops} te ontvangen, en betreft het geen foutief voorspelde spronginstructie. De \textit{µop} kan bijgevolg worden \textit{gedispatcht} en de \textit{dispatchfase} blijft actief.
+
+Bij \textit{dispatch} wordt een fractie van de cyclus, namelijk \(1 / \textit{dispatchbreedte}\), toegewezen aan de \textit{base} component van de instructie die overeenkomt met deze \textit{µop}. Elke \textit{gedispatchte} \textit{µop} draagt dus precies $1 / \textit{dispatchbreedte}$ bij aan deze \textit{base} component.
+Aangezien een statische instructie meerdere keren kan worden uitgevoerd en kan bestaan uit meerdere \textit{µops}, geldt uiteindelijk:
+
+\begin{equation}
+    \text{PICS}_{\text{b}} = (N_{\text{e}} \cdot N_{\mu}) \cdot \frac{1}{dispatchbreedte}
+    \label{eq:pics_base}
+\end{equation}
+
+Hierbij stellen $N_{\text{e}}$ en $N_{\mu}$ respectievelijk het aantal uitvoeringen
+van de statische instructie en het aantal \textit{µops} waaruit deze instructie
+bestaat voor. $\text{PICS}_{\text{b}}$ staat voor de \textit{base} component van de statische instructie.
+
+
+Na het \textit{dispatchen} van de \textit{µop} en het toewijzen van de fractie van de \textit{dispatchcyclus} aan de \textit{base} component, selecteert de \textit{dispatchfase} de volgende \textit{µop} en wordt het proces herhaald.
+
+\subsubsection{Frontend stall, Backend stall en Misprediction}
+\label{paragraph:basismechanisme PICS}
+In dit geval ondervindt de \textit{µop} één van de drie mogelijke problemen die de \textit{dispatchfase} zal onderbreken: een \textit{I-cache miss} (\textit{frontend stall}), een hardware conflict in de backend (\textit{backend stall}), of een foutief voorspelde spronginstructie (misprediction).
+Voor elke oorzaak wordt hetzelfde basismechanisme gehanteerd. Wanneer een \textit{µop} een \textit{stall} veroorzaakt, wordt deze samen met de \textit{stall} oorzaak opgeslagen in een datastructuur. Vanaf dat moment wordt de \textit{dispatchfase} volledig geblokkeerd en kunnen er geen nieuwe \textit{µops} meer \textit{gedispatcht} worden.
+Alle \textit{dispatchslots} blijven gedurende deze periode ongebruikt en hun latentie moet bijgevolg geattribueerd worden.
+
+Hoewel \textit{dispatch} stilvalt, blijft de hoofdlus van de simulator verder lopen, aangezien andere fasen eventueel nog nuttig werk kunnen verrichten. In elke iteratie bepalen de verschillende fasen hun volgende event,
+wat aangeeft tot welk tijdstip de simulator vooruit kan springen. Elke cyclus die tijdens deze periode wordt overgeslagen, zal worden toegewezen aan de \textit{PICS} component die overeenkomt met de \textit{stall} oorzaak van de instructie waartoe de \textit{µop} in de datastructuur behoort.
+Op deze manier worden alle cycli waarin de \textit{dispatchfase} onderbroken is volledig geattribueerd aan één statische instructie. Zodra de \textit{stall} is afgelopen en \textit{dispatch} opnieuw kan verdergaan, wordt de \textit{µop} uit de datastructuur verwijderd zodat enkel en alleen de \textit{stall} latentie geattribueerd wordt.
+
+Daarnaast is het belangrijk om op te merken dat ook binnen de cyclus waarin de \textit{stall} optreedt, niet alle \textit{dispatchslots} noodzakelijk benut worden. Hun latentie moet eveneens op correcte manier toegewezen worden. Stel dat \textit{dispatchbreedte} gelijk is aan vier. Indien in een bepaalde cyclus het eerste \textit{dispatchslot} succesvol een \textit{µop} \textit{dispatcht}, maar het tweede slot
+een \textit{µop} bevat die een \textit{I-cache miss} veroorzaakte, wordt de \textit{dispatchfase} vanaf dat moment onderbroken. De resterende drie \textit{dispatchslots} in die cyclus blijven ongebruikt.
+De fractie van de \textit{dispatchcyclus} die overeenkomt met deze ongebruikte \textit{slots} (in dit geval 3/4 van de cyclus) wordt eveneens toegewezen aan de \textit{PICS} component die overeenkomt met de \textit{stall} oorzaak.
+Samen met de reeds geattribueerde \textit{base} component van het eerste \textit{dispatchslot} wordt zo de volledige \textit{dispatchcyclus} geattribueerd.
+
+
+Dit mechanisme garandeert dat elke cyclus volledig geattribueerd wordt, wat later geverifieerd zal worden (zie sectie \ref{sectie:invarianten}). De drie oorzaken voor een \textit{stall} verschillen voornamelijk in hoe en wanneer hun latentie bepaald wordt. In wat volgt zullen de drie gevallen verder genuanceerd worden.
+
+\begin{enumerate}
+    \item{\textbf{Frontend stall.}} Een \textit{frontend stall} wordt veroorzaakt door een \textit{I-cache miss}. In een echte CPU zal een \textit{I-cache miss} in de \textit{fetchfase} ervoor zorgen dat de toevoer van \textit{µops} naar de \textit{dispatchfase} tijdelijk onderbroken wordt. In \textit{Sniper} blijft deze toevoer echter constant.
+Een \textit{I-cache miss} wordt daarom niet gemodelleerd door het ontbreken van \textit{µops}, maar door het artificieel blokkeren van de \textit{dispatchfase}. Hoewel er dus nog \textit{µops} beschikbaar zijn, wordt \textit{dispatch} expliciet onderbroken om de vertraging ten gevolge van de \textit{I-cache miss} te simuleren.
+Meer concreet wordt tijdens het \textit{dispatchen} van elke \textit{µop} gecontroleerd of deze onderhevig was aan een \textit{I-cache miss}. Indien dit het geval is, wordt de \textit{dispatchfase} onmiddellijk onderbroken, ongeacht het aantal resterende \textit{dispatchslots} in dezelfde cyclus.
+De oorzaak hiervan is dat de instructie waartoe de \textit{µop} behoort nog niet beschikbaar is vanuit het instructiegeheugen. In een echte CPU zou het overeenkomstige \textit{dispatchslot} dus leeg zijn, maar door de constante toevoer in \textit{Sniper} is de \textit{µop} reeds aanwezig. Hoewel de \textit{miss} eerder in de pijplijn - tijdens \textit{decode} - werd gedetecteerd en de bijhorende latentie daar werd bepaald, wordt deze pas zichtbaar in de \textit{dispatchfase}.
+Vanaf het moment dat de \textit{stall} optreedt, wordt het basismechanisme toegepast: de \textit{µop} en de \textit{stall} oorzaak worden in de datastructuur geplaatst, en de \textit{dispatchfase} blijft geblokkeerd tot het tijdstip waarop de instructie zou terugkeren uit het instructiegeheugen. Dit tijdstip wordt als \textit{next event} teruggegeven aan de hoofdlus.
+Alle cycli tijdens deze periode worden toegewezen aan de frontend component van de corresponderende statische instructie. Dit omvat zowel volledige cycli zonder \textit{dispatch} als het resterende deel van de cyclus waarin de \textit{stall} initieel optrad.
+Op deze manier wordt de volledige \textit{miss} latentie correct en volledig geattribueerd.
+    \item{\textbf{Backend stall.}} Een \textit{backend stall} treedt op wanneer er onvoldoende hardware beschikbaar is in de backend om een \textit{µop} te ontvangen. In \textit{Sniper} kan dit twee oorzaken hebben: de \textit{ROB} is vol, of de \textit{reservation stations} hebben geen vrije plaatsen meer.
+Tijdens de \textit{dispatchfase} wordt voor elke \textit{µop} gecontroleerd of beide hardwarecomponeenten voldoende capaciteit hebben. Indien één van deze niet vrij is, kan de \textit{µop} niet \textit{gedispatcht} worden.
+De \textit{µop} die niet \textit{gedispatcht} kan worden, wordt samen met de \textit{stall} oorzaak in de datastructuur geplaatst, waarna de \textit{dispatchfase} wordt onderbroken.
+In tegenstelling tot een \textit{frontend stall} is het eindtijdstip van de \textit{stall} hier niet op voorhand gekend. Het vrijmaken van hardware in de backend hangt af van de voortgang in de \textit{issue}- en \textit{commitfase}, die \textit{entries} uit de \textit{reservation stations} en de \textit{ROB} verwijderen. Daarom wordt als \textit{next event} een oneindig tijdstip teruggegeven.
+De voortgang van de simulatie wordt hierdoor volledig bepaald door events in de \textit{issue}- en \textit{commitfase}. De hoofd lus springt telkens naar het eerstvolgende event, waarna opnieuw gecontroleerd wordt of \textit{dispatch} hervat kan worden.
+Zolang de hardware in de backend niet beschikbaar is, blijft de \textit{µop} in de datastructuur aanwezig en worden alle cycli toegewezen aan de \textit{backend stall} component van de corresponderende statische instructie volgens het basismechanisme.
+Zodra een event in de backend voldoende hardware vrijmaakt, kan de \textit{µop} alsnog \textit{gedispatcht} worden. Op dat moment wordt deze uit de datastructuur verwijderd en wordt de \textit{dispatchfase} hervat.
+Op deze manier wordt de volledige \textit{stall} latentie correct en volledig geattribueerd.
+    \item{\textbf{Misprediction.}} \label{subparagraph: mispredicted} Een \textit{stall} ten gevolge van een foute voorspelling wordt veroorzaakt door een foutief voorspelde spronginstructie. In een echte CPU wordt een sprong \textit{µop} behandeld zoals een gewone \textit{µop}: deze wordt \textit{gedispatcht} samen met \textit{µops} op het voorspelde pad. Indien tijdens de \textit{executefase} blijkt dat de voorspelling fout was, worden alle jongere \textit{µops} \textit{geflusht} en wordt het \textit{fetchen} hervat vanaf het correcte pad.
+In \textit{Sniper} wordt dit gedrag anders gemodelleerd. Aangezien de simulator kennis heeft van het correcte pad, worden foutief gespeculeerde \textit{µops} niet \textit{gedispatcht}. In plaats daarvan wordt de kost van een foute voorspelling gesimuleerd door de \textit{dispatchfase} tijdelijk te blokkeren.
+Tijdens \textit{dispatch} wordt gecontroleerd of een \textit{µop} een foutief voorspelde sprong is. Indien dit het geval is, wordt de \textit{µop} nog \textit{gedispatcht}. Vervolgens wordt deze samen met de \textit{stall} oorzaak in de datastructuur geplaatst en wordt de \textit{dispatchfase} geblokkeerd.
+De totale \textit{stall} latentie bestaat uit twee componenten. Enerzijds is er de \textit{resolution time}: de tijd tot de sprong effectief uitgevoerd wordt in de \textit{issuefase}. Tijdens deze periode is het eindtijdstip van de \textit{stall} nog niet gekend.
+Vanaf het moment dat de sprong uitgevoerd wordt, wordt het eindtijdstip wel bepaald. Dit komt overeen met een vaste \textit{flush penalty}, die de tijd modelleert nodig om de pijplijn te herstellen en het correcte pad opnieuw op te starten.
+Gedurende de volledige \textit{stall} periode worden alle cycli toegewezen aan de \textit{misprediction} component van de corresponderende statische instructie. Dit omvat ook de resterende \textit{dispatchslots} in de cyclus waarin de \textit{stall} initieel optrad.
+Zodra de \textit{flush penalty} verstreken is, wordt de \textit{µop} uit de datastructuur verwijderd en wordt de \textit{dispatchfase} hervat.
+Op deze manier wordt de volledige kost van een foutieve sprongvoorspelling correct en volledig geattribueerd.
+\end{enumerate}
+
+\subsection{Implementatie van PICS bij commit}
+
+Het doel van de implementatie bij \textit{commit} is analoog aan dat bij \textit{dispatch} (zie sectie \ref{subsection:PICS bij dispatch}): de latentie van elk \textit{commitslot} (\(1 / \textit{commitbreedte}\)) wordt toegewezen aan de instructie die overeenkomt met de \textit{µop} verantwoordelijk voor de toestand van dat \textit{slot} (zie sectie \ref{subsubsection:commit toestanden}).
+Op deze manier wordt elke \textit{commitcyclus} volledig geattribueerd: ofwel integraal aan één instructie, ofwel opgesplitst over meerdere instructies.
+
+In tegenstelling tot \textit{dispatch} bevat elk \textit{commitslot} geen \textit{µop}, maar een \textit{entry} in de \textit{ROB}. Een dergelijke \textit{entry} kan een \textit{µop} bevatten, maar kan ook leeg zijn.
+Om te bepalen of een \textit{entry} vooraan\footnote{d.i. de positie van de oudste \textit{µop} in de \textit{ROB}} in de \textit{ROB} kan worden verwijderd (d.i. de \textit{µop} kan \textit{committen}), wordt nagegaan in welke van de vier toestanden het bijhorende \textit{commitslot} zich bevindt.
+
+Afhankelijk van deze toestand wordt bepaald wat er met de \textit{entry} en de \textit{commitflow} gebeurt. Er zijn drie mogelijke gevallen:
+\begin{enumerate}
+    \item De \textit{entry} bevat een \textit{µop} die kan \textit{committen}. Het \textit{slot} bevindt zich in de \textit{compute} toestand en \textit{committen} gaat verder.
+    \item De \textit{entry} bevat een \textit{µop}, maar deze kan niet \textit{committen}. Het \textit{slot} bevindt zich in de \textit{stalled} toestand en \textit{committen} wordt onderbroken.
+    \item De \textit{entry} bevat geen \textit{µop}. Het \textit{slot} bevindt zich in de \textit{drained} of \textit{flushed} toestand en \textit{committen} wordt onderbroken.
+\end{enumerate}
+
+Deze drie gevallen worden hieronder verder toegelicht.
+
+\subsubsection{Compute}
+
+Dit beschrijft de normale werking van de \textit{commitfase}. De \textit{entry} bevat een \textit{µop} die succesvol kan \textit{committen}. Bijgevolg wordt een fractie van de cyclus - namelijk \(1 / \textit{commitbreedte}\) - toegewezen aan de \textit{compute} component van de instructie waartoe deze \textit{µop} behoort.
+
+Analoog aan formule (\ref{eq:pics_base}) geldt uiteindelijk:
+\begin{equation}
+    \text{PICS}_{\text{c}} = (N_{\text{e}} \cdot N_{\mu}) \cdot \frac{1}{commitbreedte}
+    \label{eq:pics_compute}
+\end{equation}
+
+Hierbij stellen $N_{\text{e}}$ en $N_{\mu}$ respectievelijk het aantal uitvoeringen van de statische instructie en het aantal \textit{µops} waaruit deze instructie bestaat voor.
+$\text{PICS}_{\text{c}}$ stelt de \textit{compute} component van de statische instructie voor.
+
+Na het \textit{committen} van de \textit{µop} en het toewijzen van de fractie van de cyclus, wordt de volgende \textit{entry} geselecteerd en wordt het proces herhaald.
+
+\subsubsection{Stalled}
+
+In dit geval bevat de \textit{entry} een \textit{µop} die nog niet kan \textit{committen} omdat deze nog niet volledig uitgevoerd is.
+Vanaf het moment dat dit gedetecteerd wordt, wordt de \textit{commitfase} onderbroken en kunnen er geen verdere \textit{µops} \textit{committen}.
+Alle \textit{commitslots} blijven gedurende deze periode ongebruikt en hun latentie moet bijgevolg geattribueerd worden.
+Hiervoor wordt hetzelfde basismechanisme gebruikt als bij \textit{dispatch} (zie sectie \ref{paragraph:basismechanisme PICS}).
+De \textit{µop} wordt samen met de \textit{stall} oorzaak (\textit{stalled}) opgeslagen in een datastructuur. Vanaf dat moment wordt de \textit{commitfase} volledig geblokkeerd.
+Tijdens elke iteratie van de hoofdlus worden de overgeslagen cycli toegewezen aan de \textit{stalled} component van de corresponderende statische instructie.
+Net zoals bij \textit{dispatch} wordt ook rekening gehouden met het resterende deel van de cyclus waarin de \textit{stall} initieel optrad. De latentie van alle daaropvolgende \textit{commitslots} in dezelfde cyclus wordt eveneens toegewezen aan de \textit{stalled} component.
+Zodra de \textit{µop} wel kan \textit{committen}, wordt deze uit de datastructuur verwijderd zodat enkel de \textit{stall} latentie geattribueerd wordt, en wordt de \textit{commitfase} hervat.
+
+\subsubsection{Drained en Flushed}
+
+In dit geval bevat de \textit{entry} geen \textit{µop}, wat betekent dat de \textit{ROB} leeg is.
+Als gevolg hiervan wordt de \textit{commitfase} onderbroken totdat er opnieuw \textit{µops} beschikbaar zijn in de \textit{ROB}.
+Alle \textit{commitslots} blijven gedurende deze periode ongebruikt en hun latentie moet geattribueerd worden.
+Opnieuw wordt hiervoor hetzelfde basismechanisme gebruikt als bij \textit{dispatch} (zie sectie \ref{paragraph:basismechanisme PICS}).
+Een \textit{µop} wordt geïdentificeerd als verantwoordelijk voor het leeg zijn van de \textit{ROB} en wordt samen met de oorzaak (\textit{drained} of \textit{flushed}) in de datastructuur geplaatst.
+Alle cycli tijdens deze periode worden toegewezen aan de overeenkomstige component van de statische instructie waartoe deze \textit{µop} behoort.
+Zodra er opnieuw \textit{µops} in de \textit{ROB} aanwezig zijn, wordt deze \textit{µop} uit de datastructuur verwijderd en wordt de \textit{commitfase} hervat.
+Net zoals bij de andere gevallen wordt ook hier rekening gehouden met de resterende \textit{commitslots} in de cyclus waarin deze toestand optreedt.
+
+Het identificeren van de verantwoordelijke \textit{µop} gebeurt als volgt:
+
+\begin{enumerate}
+    \item{\textbf{Flushed.}} Indien de laatst \textit{gecommitte} \textit{µop} behoort tot een fout voorspelde spronginstructie, wordt deze beschouwd als verantwoordelijk voor het leeg zijn van de \textit{ROB}.
+                            Zoals besproken in sectie \ref{subparagraph: mispredicted}, leidt een foute voorspelling ertoe dat de \textit{dispatchfase} tijdelijk onderbroken wordt.
+                            Indien op het moment dat deze \textit{µop} \textit{commit} de \textit{dispatchfase} nog steeds geblokkeerd is, zijn er geen nieuwe \textit{µops} aangevoerd en is de \textit{ROB} leeg ten gevolge van deze foute voorspelling.
+                            In dat geval wordt de latentie toegewezen aan de \textit{flushed} component van de corresponderende spronginstructie.
+    \item{\textbf{Drained.}} Indien de laatst \textit{gecommitte} \textit{µop} niet behoort tot een fout voorspelde spronginstructie, wordt gekeken naar de volgende \textit{µop} die \textit{gedispatcht} zal worden.
+                            Indien deze \textit{µop} een \textit{I-cache miss} ondervindt, wordt de \textit{dispatchfase} tijdelijk onderbroken, waardoor de toevoer van \textit{µops} naar de \textit{ROB} stilvalt.
+                            De \textit{ROB} loopt hierdoor leeg, en deze \textit{µop} wordt beschouwd als verantwoordelijk voor deze toestand.
+                            De latentie wordt in dat geval toegewezen aan de \textit{drained} component van de corresponderende instructie.
+\end{enumerate}
+
+\section{Invarianten}
+\label{sectie:invarianten}
+Deze sectie onderbouwt de implementatie van \textit{PICS} aan de hand van invarianten: eigenschappen die steeds gelden voor \textit{PICS}. De invarianten zullen de data gegenereerd door de implementatie van \textit{PICS} vergelijken met de bestaande output van de \textit{Sniper} simulator, en daarmee verzekeren dat alle gegenereerde data consistent is. Deze invarianten zullen toegepast worden aan de hand van \textit{microbenchmarks}. Een \textit{microbenchmark} is een klein programma dat één component van de \textit{OoO} pijplijn belast, zodat het effect ervan geïsoleerd gemeten kan worden. De invarianten vormen geen sluitend bewijs van correctheid, maar een schending ervan zou onmiskenbaar wijzen op een fout in de implementatie.
+
+\subsection{Totaal aantal cycli}
+Per cyclus kent \textit{PICS} de cyclus (of een fractie ervan, zoals in sectie \ref{subsection:PICS bij dispatch}) toe aan de instructies die in die cyclus \textit{dispatchen}. Elke cyclus wordt volledig verdeeld - er gaat niets verloren en er wordt niets bijgeteld. De totale som van alle toegewezen cycli over alle \textit{PICS} bij \textit{dispatch} moet daarom per definitie gelijk zijn aan de totale gesimuleerde duur van het programma (in cycli). Eenzelfde redenering kan gemaakt worden voor de \textit{PICS} bij \textit{commit}, die onafhankelijk tot dezelfde som moeten leiden.
+
+Tabel~\ref{tab:invariant_totaal} toont een selectie van \textit{microbenchmarks}. De kolom ROB-cycli bevat het totaal aantal simulatiecycli zoals gerapporteerd door de \textit{Sniper} simulator. Er wordt echter een correctie uitgevoerd op dit aantal, wat onderbouwd wordt in sectie \ref{subsection:open_prob}. De kolommen \textit{\(PICS_d\)} en \textit{\(PICS_c\)} bevatten de som van alle \textit{PICS}-waarden bij respectievelijk \textit{dispatch} en \textit{commit}. De bijhorende \(\Delta\)-kolommen geven het verschil in absolute cycli met de referentie. De \(\Delta\) ligt bij \textit{commit} hoger doordat de gedetaileerde simulatie afsluit wanneer sommige \textit{µops} nog niet gesimuleerd zijn, zoals verder uitgelegd in sectie \ref{subsection:open_prob}.
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{lrrrrrr}
+        \hline
+        Benchmark & ROB-cycli & \(PICS_d\) & \(\Delta_d\) & \(PICS_c\) & \(\Delta_c\) \\
+        \hline
+        ED1   & 118.438,73 & 118.438,70 & \(-0,03\) & 118.435,71 & \(-3,03\) \\
+        STL2b & 295.280,33 & 295.280,26 & \(-0,07\) & 295.277,22 & \(-3,11\) \\
+        MCS   & 245.360,45 & 245.360,31 & \(-0,14\) & 245.357,44 & \(-3,00\) \\
+        MI    &  48.538,89 &  48.538,75 & \(-0,14\) &  48.535,50 & \(-3,39\) \\
+        DPcvt &  21.845,95 &  21.845,75 & \(-0,20\) &  21.842,72 & \(-3,23\) \\
+        EI    &   7.197,98 &   7.197,75 & \(-0,23\) &   7.194,70 & \(-3,28\) \\
+        CCl   &   5.874,99 &   5.874,74 & \(-0,25\) &   5.871,72 & \(-3,27\) \\
+        \hline
+    \end{tabular}
+    \caption{Selectie van benchmarks. Alle waarden worden uitgedrukt in cycli.}
+    \label{tab:invariant_totaal}
+\end{table}
+
+\subsection{Base}
+Voor de uitvoering van het programma geldt de volgende invariant:
+\begin{equation}
+\sum_{i=0}^{N_s} \text{PICS}_{b,i} = N_d \cdot \frac{1}{dispatchbreedte}
+\label{eq:pics_invariant}
+\end{equation}
+$N_s$ stelt het aantal statische instructies in het programma voor, $N_d$ het totaal aantal dynamisch uitgevoerde \textit{µops}, beide verkregen uit de output van de \textit{Sniper} simulator. $\text{PICS}_{b,i}$ stelt de basiscomponent van de $i$-de statische instructie voor zoals gedefinieerd in formule (\ref{eq:pics_base}).
+
+Dit is zo omdat elke \textit{µop} steeds \textit{gedispatcht} wordt, en dus altijd een deel van de cyclus toegeschreven krijgt aan de \textit{base}-component. Bij constructie, zoals uitgelegd in formule (\ref{eq:pics_base}), bedraagt dit precies \(1/\textit{dispatchbreedte}\). Tabel \ref{tab:invariant_base} vergelijkt de som over alle \textit{PICS} van enkele benchmarks met het aantal uitgevoerde \textit{µops} uit de simulatoroutput. \(\Delta_c\) is groter dan \(\Delta_d\) doordat enkele \textit{µops} nog niet gedetaileerd zijn op het moment dat de simulator afsluit (zie sectie \ref{subsection:open_prob}).
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{lrrrrrr}
+        \hline
+        Benchmark & uops/breedte & \(base_d\) & \(\Delta_d\) & \(base_c\) & \(\Delta_c\) \\
+        \hline
+        ED1   &  5.122,75 &  5.120,70 & \(-2,05\) &  5.098,46 & \(-24,29\) \\
+        STL2b & 50.242,50 & 50.240,14 & \(-2,36\) & 50.214,10 & \(-28,40\) \\
+        MCS   & 32.773,00 & 32.770,68 & \(-2,32\) & 32.755,49 & \(-17,51\) \\
+        MI    & 30.346,50 & 30.344,75 & \(-1,75\) & 30.331,26 & \(-15,24\) \\
+        DPcvt &  3.602,50 &  3.600,50 & \(-2,00\) &  3.583,47 & \(-19,03\) \\
+        EI    &  4.626,25 &  4.624,25 & \(-2,00\) &  4.622,21 &  \(-4,04\) \\
+        CCl   &  4.111,00 &  4.109,24 & \(-1,76\) &  4.097,22 & \(-13,78\) \\
+        \hline
+    \end{tabular}
+    \caption{Selectie van benchmarks. Alle waarden worden uitgedrukt in micro-operaties per dispatch-slot.}
+    \label{tab:invariant_base}
+\end{table}
+
+
+\subsection{Frontend stall en Drained}
+\label{subsec:frontend stall}
+Het aantal cycli dat toegeschreven wordt aan de component \textit{frontend stall} is bijna uitsluitend afkomstig van \textit{I-cache misses}. Om deze component te verifiëren wordt er gekeken naar een \textit{microbenchmark} met veel \textit{I-cache misses}, waarbij het aantal herhalingen van de lus wordt opgeschaald.
+Het verwachte resultaat is dat door het opschalen van het aantal iteraties er meer \textit{I-cache misses} zijn wat op zijn beurt zou moeten leiden tot een groter aantal cycli toegeschreven aan de \textit{frontend stall} componenten.
+
+De gebruikte \textit{microbenchmarks} bestaat uit een lange reeks (ongeveer 11 000) bewerkingen op een variabele \texttt{t}, waarbij dezelfde reeks meerdere keren na elkaar is uitgeschreven. Hierdoor wordt de lus in machinecode fysiek groot genoeg om \textit{I-cache misses} te veroorzaken.
+\begin{lstlisting}[language=C]
+    ...
+    for(iter=0; iter < ITERS; ++iter) {
+        t += 1;
+        t *= 2;
+        t -= 1;
+        t &= 0xFFF00FFF;
+        t ^= 0x14022;
+        t %= 0xFFFFFF3;
+        t += 6;
+        t *= 10;
+        ...
+        t %= 0xFFFFFF3;
+        t += 6;
+        t *= 10;
+    }
+\end{lstlisting}
+\vspace{-1em}
+\noindent\textit{\small C-code van de MIP benchmark}
+
+Het analyseren van de benchmark voor verschillende aantal iteraties resulteert in Figuur~\ref{fig:MIP}. Het is duidelijk dat het verwachte gedrag bij dispatch wordt bevestigd.
+\begin{figure}[H]
+    \centering
+    \makebox[\textwidth][c]{\includegraphics[width=0.8\textwidth]{fronted_stalls_scaling.png}}
+    \caption{MIP voor verschillend aantal iteraties}
+    \label{fig:MIP}
+\end{figure}
+
+Bij \textit{commit} is het schaalgedrag niet zichtbaar. De \textit{frontend stalls} die bij \textit{dispatch} zichtbaar zijn en schalen met het aantal \textit{I-cache misses} worden gemaskeerd bij \textit{commit}.
+Dit maakt het verifiëren van de \textit{drained} component lastig. Er kan uiteindelijk geconcludeerd worden dat als de som van het totaal aantal geattribueerde cycli klopt en de drie andere componenten correct zijn, de \textit{drained} component ook correct moet zijn. Dit is een argument voor het correct zijn van het totaal aantal \textit{drained} cycli, niet of de cycli naar de correcte instructies gaan.
+Het correct zijn van de drie andere componenten wordt nu verder aangetoond.
+
+
+\subsection{Misprediction}
+\label{subsec:misprediction}
+Het aantal cycli dat toegeschreven wordt aan de component \textit{misprediction} is afkomstig van foute voorspellingen. Om deze component te verifiëren wordt er gekeken naar een \textit{microbenchmark} met veel foutieve \textit{sprongvoorspellingen}, waarbij het aantal iteraties opnieuw wordt opgeschaald. Het verwachte resultaat is dat het opschalen van het aantal iteraties leidt tot meer foutieve sprongvoorspellingen wat op zijn beurt leidt tot meer cycli toegeschreven aan de \textit{misprediction} componenten.
+
+De gebruikte \textit{microbenchmarks} bestaat uit een lus met een willekeurige sprongconditie, waardoor er dus veel foute voorspellingen zullen zijn.
+\begin{lstlisting}[language=C]
+    ...
+    for(i=0; i < STEP + zero; i+=1) {
+      if(randArr[i])  {
+        t+=3+3*t;
+      } else {
+        t-=1-5*t;
+      }
+    }
+    ...
+\end{lstlisting}
+\vspace{-1em}
+\noindent\textit{\small C-code van de CCh benchmark}
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{misprediction_scaling.png}
+        \caption{CCh dispatch voor verschillend aantal iteraties.}
+        \label{fig:CCh_dispatch}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{flushed_scaling.png}
+        \caption{CCh commit voor verschillend aantal iteraties.}
+        \label{fig:CCh_commit}
+    \end{minipage}
+\end{figure}
+
+Figuur \ref{fig:CCh_dispatch} toont het schaalgedrag van de \textit{microbenchmark} bij \textit{dispatch}. Het verwachte gedrag, meer foutieve sprongvoorspellingen leidt tot meer \textit{misprediction} cycli, wordt hier duidelijk zichtbaar. Figuur \ref{fig:CCh_commit} toont het schaalgedrag van de \textit{microbenchmark} bij \textit{commit}. Wat opvalt is dat het aantal \textit{flushed} cycli bij \textit{commit} minder is dan bij \textit{dispatch}. Dit is te wijten aan het feit dat de
+gevolgen van de foutief voorspelde sprong gemaskeerd worden onder \textit{backend stalls} bij \textit{commit} (zie sectie \ref{dispatch}).
+In het algemeen zijn er twee mogelijkheden hoe de gevolgen van foutief voorspelde sprongen zichtbaar worden bij \textit{commit}: ze worden niet of weinig gemaskeerd, waarvoor hier aangetoond werd dat het gedrag correct is.
+Of ze worden (bijna) volledig gemaskeerd waardoor het correcte gedrag van \textit{backend stalls} ervoor zorgt dat ook dit gedrag correct is.
+
+\subsection{Backend stall en stalled}
+\label{subsec:backend_stall}
+Analoog aan de \textit{drained} component van \textit{PICS} bij \textit{commit}, wordt het argument voor de verificatie van de \textit{backend stall} component van \textit{PICS} bij \textit{dispatch} afgeleid uit de andere onderbouwingen. Er is reeds een argument voor de \textit{base}, \textit{frontend stall} en \textit{misprediction} component van \textit{PICS} bij \textit{dispatch}, alsook de totale som. Logischerwijs zijn de cycli uit de som die niet voorkomen in één van de drie componenten, \textit{backend stall} cycli. Dit geeft dus enkel een argument voor het totaal aantal geattribueerde \textit{backend stall} cycli, maar zegt niets over of de cycli naar de juiste instructie gaan.
+
+Voor de \textit{stalled} component van \textit{PICS} bij \textit{commit} wordt gebruik gemaakt van een analoge redenering als bij de \textit{frontend stall} component van bij \textit{dispatch}, zoals beschreven in sectie \ref{subsec:frontend stall}. De \textit{MM microbenchmark} loopt een \textit{gelinkte lijst} af. Elk element bevat, naast zich in het geheugen, ook het adres van het volgende element. Daarnaast wordt ervoor gezorgd dat elk element een volledige \textit{cachelijn} - het aantal bytes dat in één keer uit het geheugen geladen wordt en in de \textit{cache} opgeslagen wordt - inneemt. Elke \textit{load} van een element moet dus naar het hoofdgeheugen én elke \textit{load} is afhankelijk van de vorige voor het adres. De trage \textit{load}-instructie zal dus telkens vastzitten als oudste instructie in de \textit{ROB}, wat zal leiden tot cycli op de \textit{stalled} component van zijn \textit{PICS} bij \textit{commit}, zoals geïllustreerd in Figuur \ref{fig:MM_commit}.
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{MM_commit.png}
+        \caption{PICS bij commit voor de MM microbenchmark.}
+        \label{fig:MM_commit}
+    \end{minipage}
+    \hfill
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{stalled_scaling.png}
+        \caption{Stalled cycli en datacache misses in functie van de lijstlengte.}
+        \label{fig:stalled_scaling}
+    \end{minipage}
+\end{figure}
+
+Als de kritieke \textit{load}-instructie nu meer uitgevoerd wordt - door de \textit{gelinkte lijst} langer te maken - zou het logische gevolg moeten zijn dat het aantal \textit{stalled} cyli eveneens toeneemt. Figuur \ref{fig:stalled_scaling} toont het aantal \textit{datacache misses}, zoals gerapporteerd door de \textit{Sniper} simulator, samen met het totaal aantal geattribueerde \textit{stalled} cycli over alle \textit{PICS}. Merk op dat dit lineair gedrag zich niet zou blijven voortzetten. Bij een bepaalde grootte zal de \textit{gelinkte lijst} de grootte van de eerste niveau \textit{cache} overschreiden, en zal de \textit{load}-instructie bij elke uitvoering meer \textit{stalled} cycli bekomen op zijn \textit{PICS} bij \textit{commit}.
+
+\section{Resultaten}
+\label{sectie:resultaten}
+Na het verifiëren van de \textit{PICS} kunnen enkele codefragmenten geanalyseerd en eventueel geoptimaliseerd worden. In wat volgt worden twee zulke fragmenten besproken, die tevens aantonen dat \textit{PICS} bij \textit{dispatch} en \textit{PICS} bij \textit{commit} een complementair beeld geven.
+
+\subsection{Optimalisatie van PSum}
+\label{dispatch}
+Als eerste programma wordt PSUM gekozen. Een \textit{array} wordt partieel opgeteld gedicteerd door een willekeurig gegenereerde \textit{array}. De kern van het programma wordt gegeven door het volgende fragment:
+\begin{lstlisting}[language=C]
+    ...
+    for (i = 0; i < ITER + zero; ++i) {
+        if (randArr[i]) {
+            index = (i * STRIDE) % ARRAY_SIZE;
+            t += data[index];
+        }
+    }
+    ...
+\end{lstlisting}
+\vspace{-1em}
+\hspace{5em}
+\noindent\textit{\small C-code van PSum}
+
+Bij de uitvoering van deze code wordt voornamelijk een prestatieverlies verwacht door foute sprongvoorspellingen, aangezien de sprongconditie afhankelijk is van een willekeurige waarde. Om te bepalen welke instructie hier exact verantwoordelijk voor is, wordt de gegenereerde assembly-code geanalyseerd:
+\begin{lstlisting}[morekeywords={cmpb,je,mov,imul,shr,lea,sub,movslq,add,cmp,jnz,rcx,edx,eax,r8d,rsp,esi,edi,r9,rdx}]
+    ...
+    401780:       cmpb   $0x0,(%rcx)
+    401783:       je     40179f <loop+0x5f>
+    401785:       mov    %eax,%edx
+    401787:       imul   %r9,%rdx
+    40178b:       shr    $0x22,%rdx
+    40178f:       lea    (%rdx,%rdx,4),%r8d
+    401793:       mov    %eax,%edx
+    401795:       sub    %r8d,%edx
+    401798:       movslq %edx,%rdx
+    40179b:       add    -0x28(%rsp,%rdx,4),%esi
+    40179f:       add    $0x2,%eax
+
+    ...
+\end{lstlisting}
+\vspace{-1em}
+\hspace{5em}
+\noindent\textit{\small Assembly code van PSum}
+
+De interessante instructie is \verb|je| op adres \verb|401783| - de spronginstructie waarvan de conditie afhangt van \verb|randArr[i]|. Indien \verb|randArr[i]| gelijk is aan nul wordt de sprong genomen en de berekening van \verb|t| overgeslagen. In het andere geval worden de instructies van \verb|401785| tot \verb|40179b| uitgevoerd, waarbij \verb|index| berekend wordt en \verb|t| geaccumuleerd wordt. Beide paden komen samen op \verb|40179f|, waarna de volgende iteratie begint.
+
+Omdat \verb|randArr| willekeurige waarden bevat, kan de sprongvoorspeller geen patroon herkennen en zal er frequent een foute voorspelling gemaakt worden. Er wordt dan ook verwacht dat \verb|je| de instructie is met de meeste geattribueerde cycli, voornamelijk door foutieve voorspellingen. Figuur \ref{fig:PSum} toont de \textit{PICS} bij \textit{dispatch} en bij \textit{commit}. Bij \textit{dispatch} volgt de \textit{PICS} de verwachtingen en wordt \verb|je| correct aangeduid als bottleneck. Opmerkelijk is dat dit bij \textit{commit} niet het geval is: daar wordt de bottleneck gemaskeerd door de \verb|cmp| instructie op adres \verb|401780|, die als geheugentoegang een \textit{backend stall} ondergaat.
+
+Dit illustreert het belang van het gecombineerd bekijken van \textit{PICS} bij \textit{dispatch} en bij \textit{commit}, aangezien beide een complementair beeld geven en elk andere bottlenecks aan het licht brengen.
+\begin{figure}[H]
+\centering
+\makebox[\textwidth][c]{\includegraphics[width=1.2\textwidth]{PSum.png}}
+\caption{PICS van de PSum benchmark}
+\label{fig:PSum}
+\end{figure}
+Merk op dat de \textit{Sniper} simulator soms afwijkende namen gebruikt ten opzichte van de \textit{assembler} - e.g. \verb|je| en \verb|jz| - die echter dezelfde instructie voorstellen.
+
+Als optimalisatie wordt de sprong geëlimineerd door de berekening van \verb|index| en de accumulatie van \verb|t| te scheiden in twee afzonderlijke lussen:
+\begin{lstlisting}[language=C]
+    ...
+    for(i = 0; i < ITER + zero; ++i)
+    {
+        indices[a] = (i * STRIDE) % ARRAY_SIZE;
+        a += randArr[i];
+    }
+    for(i = 0; i < a + zero; ++i)
+    {
+        t += data[indices[i]];
+    }
+    ...
+\end{lstlisting}
+\vspace{-1em}
+\hspace{5em}
+\noindent\textit{\small C-code van OPSum}
+
+Door de lussen te splitsen verdwijnt de conditionele sprong volledig. Het gevolg is dat er een extra doorloop nodig is, maar doordat er geen foutieve voorspelling meer gemaakt worden zal het blijken dat er toch een nettoverbetering is, namelijk van \(16 583\) naar \(15 832\). Dit is duidelijk zichtbaar op Figuur \ref{fig:OPSum}. De foutieve sprongvoorspellingen zijn volledig weggewerkt.
+\begin{figure}[H]
+    \centering
+    \makebox[\textwidth][c]{\includegraphics[width=1.2\textwidth]{OPSum.png}}
+    \caption{PICS van OPSum}
+    \label{fig:OPSum}
+\end{figure}
+
+\subsection{Optimalisatie van AA}
+Nu wordt er gekeken naar de volgende code:
+\begin{lstlisting}[language=C]
+    ...
+    int i;
+    n=malloc(sizeof(struct ll));
+    cur=n;
+    for(i=0;i<LEN;++i) {
+        cur->val=i;
+        cur->_next=malloc(sizeof(struct ll));
+        malloc(3*64); // trash the memory
+        cur=cur->_next;
+    }
+    cur->val=100;
+    cur->_next=NULL;
+    ...
+    int t = 0,i;
+    struct ll* cur =n;
+    while(cur!=NULL) {
+        t+=cur->val;
+        cur=cur->_next;
+    }
+    return t;
+    ...
+\end{lstlisting}
+\vspace{-1em}
+\hspace{5em}
+\noindent\textit{\small C-code van AA}
+
+In dit voorbeeld wordt een \textit{gelinkte lijst traversal} uitgevoerd. De knopen bevinden zich redelijk ver van elkaar in het geheugen, waardoor de \textit{cache} snel vol raakt. Een \textit{load} instructie op een bepaalde knoop is altijd afhankelijk van de \textit{load} instructie van de vorige knoop. Op die manier zal elke \textit{load} afhankelijk zijn van de \textit{load} die op dat moment wordt uitgevoerd. Dit betekent ook dat de \textit{ROB} zeer snel vol raakt en er een \textit{backend stall} zal optreden. Om de exacte instructie die de \textit{stall} veroorzaakt te vinden, wordt er opnieuw gekeken naar de gegenereerde assembly-code.
+\begin{lstlisting}[morekeywords={cmpb,ret,je,mov,imul,shr,lea,sub,movslq,add,cmp,jne,rcx,edx,eax,r8d,rsp,esi,edi,r9,rdx,rsi,test,nopl,rax}]
+    ...
+    401780:       add    (%rsi),%eax
+    401782:       mov    0x8(%rsi),%rsi
+    401786:       test   %rsi,%rsi
+    401789:       jne    401780 <loop+0x10>
+    40178b:       ret
+    ...
+
+\end{lstlisting}
+\vspace{-1em}
+\hspace{5em}
+\noindent\textit{\small Assembly-code van AA}
+
+De \verb|add| op adres \verb|401780| is de eerste instructie die een \textit{load} uitvoert en komt overeen met de accumulatie van \verb|t|. Daarna wordt er nog een \textit{load} uitgevoerd om het adres van de volgende knoop te verkrijgen. Deze zal sneller verlopen, aangezien de benodigde data al in de \textit{cache} staat dankzij de eerste \textit{load}. Zoals eerder uitgelegd, kan de volgende knoop pas worden ingelezen wanneer de vorige \textit{load} voltooid is, waardoor deze \verb|add| instructie de bottleneck vormt.
+
+Figuur \ref{fig:AA} toont duidelijk via de \textit{PICS} bij \textit{commit} dat de \verb|add| instructie die hierboven vermeld is de bottleneck is. Merkwaardig is dat de \textit{PICS} bij \textit{dispatch} de \verb|test| instructie aanduidt als bottleneck. Dit is echter te verwachten aangezien - bij constructie van de \textit{PICS} bij \textit{dispatch}, zie sectie \ref{subsection:PICS bij dispatch} - de cycli worden geattribueerd aan de instructie die op dat moment niet kan worden \textit{gedispatcht}. Op het moment dat de \verb|add| instructie wacht op een \textit{load}, staat de \verb|test| instructie als volgende klaar om \textit{gedispatcht} te worden en krijgt bijgevolg de cycli toegewezen. Dit toont opnieuw aan dat beide meetmomenten een complementair beeld geven en dat het visualiseren van de \textit{PICS} bij \textit{commit} essentieel is voor een correcte analyse.
+\begin{figure}[H]
+    \centering
+    \makebox[\textwidth][c]{\includegraphics[width=1.2\textwidth]{AA.png}}
+    \caption{PICS van AA}
+    \label{fig:AA}
+\end{figure}
+
+Als optimalisatie wordt er een afweging gemaakt binnen het alloceren van de \textit{tegelinkte lijst}. Er wordt gekozen om aan \textit{arena allocation} te doen. Dit wil zeggen dat wanneer de eerste knoop wordt gealloceerd, er onmiddellijk een groter blok wordt gealloceerd voor meerdere knopen. De volgende knopen worden dan gealloceerd door een pointer op te schuiven. Er moet echter een afweging gemaakt worden over hoeveel ruimte er wordt gealloceerd: een te groot blok reserveren verspilt mogelijks geheugen en maakt het moeilijker een vrije blok te vinden, terwijl een te klein blok weinig voordeel biedt. Als er wordt gewerkt met \textit{arena allocation} waarbij er onmiddellijk vijf knopen worden gealloceerd, zijn de bijhorende \textit{PICS} te zien in Figuur~\ref{fig:AA_opt}. Het aantal \textit{backend stall} cycli daalt van \(573 292\) naar \(376 733\), een daling van \(34\%\). Het initieel alloceren van meer knopen biedt echter een beperkt voordeel, aangezien de \textit{cachegrootte} een natuurlijke grens oplegt.
+\begin{figure}[H]
+    \centering
+    \makebox[\textwidth][c]{\includegraphics[width=1.2\textwidth]{AA_opt.png}}
+    \caption{PICS van AAOpt}
+    \label{fig:AA_opt}
+\end{figure}
+
+\section{Reflectie}
+De samenwerking, organisatie en communicatie binnen de groep verliep zeer vlot. Alle studenten waren gemotiveerd en betrokken, waardoor taken efficiënt verdeeld en opgevolgd konden worden. Ook de promotor en begeleiders waren nauw betrokken bij het project. Er was wekelijks overleg mogelijk, waarbij voortgang besproken werd en ruimte was voor inhoudelijke discussie. Deze open communicatie zorgde ervoor dat problemen snel gesignaleerd en aangepakt konden worden, wat sterk bijdroeg aan het uiteindelijke resultaat.
+
+
+\section{Openstaande problemen}
+Ondanks de correcte implementatie van \textit{PICS} in de \textit{Sniper} simulator, zijn er nog openstaande problemen die er voor zorgen dat met bepaalde zaken geen rekeningen wordt gehouden bij het genereren van \textit{PICS}.
+\textit{PICS} toont dus een geabstraheerde versie van de realiteit. De problemen worden hieronder besproken.
+\label{subsection:open_prob}
+\subsection{Verloren instructies}
+Om de simulatiesnelheid te verhogen voor grote aantallen instructies kan de \textit{Sniper} simulator enkel het \textit{cachegedrag} van instructies simuleren in \textit{fast forward mode}. Het deel waarin de gebruiker effectief geïnteresseerd is, gemarkeerd als \textit{region of interest (ROI)}, wordt dan uitvoerig gesimuleerd in \textit{detailed mode}.
+
+Dit heeft echter gevolgen voor de implementatie van \textit{PICS}. Op het einde van de \textit{ROI} schakelt de simulator terug over op \textit{fast forward mode} onafhankelijk van de staat van de \textit{ROB}. De \textit{PICS} bij \textit{commit} van de instructies die zich nog in de \textit{ROB} bevinden zullen dus niet volledig zijn. Ook het overschakelen van \textit{fast forward mode} naar \textit{detailed mode} in het begin van de \textit{ROI} leidt tot verlies van nauwkeurigheid. Het programma dat de instructies uit de \textit{binary} extraheert werkt losgekoppeld van de simulator zelf. Er zijn al een reeks instructies uit de \textit{ROI} ongedetailleerd verwerkt voordat het extractieprogramma op de hoogte is dat het instructies in detail moet verwerken. Voor die instructies heeft de simulator dus te weinig informatie om \textit{PICS} op te stellen. De impact is echter klein, omdat het niet schaalt met de grootte van het programma.
+
+
+\subsection{TLB misses}
+\textit{TLB-misses} worden apart van de reguliere instructiestroom verwerkt en omzeilen de modellering van de \textit{ROB} volledig. Omdat het attribueren van de \textit{PICS} gebeurt in de code die de \textit{ROB} modelleert, worden de cycli van een \textit{TLB-miss} aan geen enkele instructie toegewezen.
+
+
+In sectie \ref{subsec:backend_stall} werd gesproken over een correctie op het totaal aantal cycli dat gerapporteerd werd door de \textit{Sniper} simulator waarmee de som over alle \textit{PICS} vergeleken werd. Die correctie is de som van de cycli die gesimuleerd werden voor de verloren instructies en de \textit{TLB misses}.
+
+\subsection{DVFS}
+\textit{Dynamic voltage and frequency scaling (DVFS)} is een techniek waarbij een processor zijn klokfrequentie (en bijhorende voedingsspanning) dynamisch aanpast om energieverbruik te beperken zonder onnodig prestatieverlies. De \textit{Sniper} simulator kan dit modelleren. Desondanks wordt er bij de huidige implementatie van \textit{PICS} uitgegaan van een constante klokperiode. Bij elke aanrekening van een cyclus wordt een klokperiode geteld. Het totaal wordt dan op het einde van de simulatie éénmalig door de klokperiode gedeeld om het aantal cycli te bekomen.
+
+
+
+\section{Besluit}
+
+In dit project werd PICS succesvol geïmplementeerd in de Sniper simulator, zowel bij dispatch als bij commit. De implementatie maakt het mogelijk om cycli tijdsproportioneel toe te wijzen aan statische instructies en zo inzicht te krijgen in waar uitvoeringstijd verloren gaat.
+
+Bij dispatch worden cycli onderverdeeld in de componenten base, frontend stall, backend stall en misprediction. Bij commit gebeurt dit via compute, stalled, drained en flushed. Voor elke stall wordt de volledige latentie correct geattribueerd aan de verantwoordelijke instructie.
+
+De implementatie werd geverifieerd aan de hand van microbenchmarks en invarianten. Daaruit bleek dat het totaal aantal geattribueerde cycli overeenkomt met de simulatieduur en dat de verschillende componenten het verwachte gedrag vertonen.
+
+Daarnaast tonen de resultaten aan dat PICS bij dispatch en commit een complementair beeld geven van prestatieproblemen. Afhankelijk van het meetmoment kunnen andere bottlenecks zichtbaar worden. Hierdoor is het belangrijk om beide vormen van profilering samen te gebruiken bij prestatieanalyse.
+
+De implementatie biedt ontwikkelaars een manier om prestatieproblemen in meerdradige applicaties gerichter te analyseren en optimaliseren. Hoewel er nog openstaande problemen zijn, zoals verloren instructies, TLB misses en DVFS, vormt dit project een werkende basis voor verdere uitbreiding van PICS binnen de Sniper simulator.
+
+\newpage
+
+
+\renewcommand{\refname}{Referenties}
+\begin{thebibliography}{9}
+\bibitem{h&p}
+    J. L. Hennessy, D. A. Patterson, and C. Kozyrakis, Computer Architecture: A Quantitative Approach, 7th ed. Morgan Kaufmann, 2025
+
+\bibitem{tea2023}
+    B. Gottschall, L. Eeckhout, and M. Jahre. 2023. TEA: Time-Proportional Event Analysis. In Proceedings of the 50th Annual International Symposium on Computer Architecture (ISCA ’23), June 17–21, 2023, Orlando, FL, USA. ACM, New York, NY, USA, 13 pages. https://doi.org/10.1145/3579371.3589058
+
+\bibitem{dip2026}
+    S. H. Campelo de Santana, J. Rogers, L. Eeckhout, and M. Jahre, "Chips Need DIP: Time-Proportional Per-Instruction Cycle Stacks at Dispatch," in Proc. 31st ACM Int. Conf. Architectural Support for Programming Languages and Operating Systems (ASPLOS), Pittsburgh, PA, USA, Mar. 2026, pp. 361–376.
+
+\bibitem{sniper}
+    T. E. Carlson, W. Heirman, S. Eyerman, I. Hur, and L. Eeckhout, "An Evaluation of High-Level Mechanistic Core Models," ACM Trans. Archit. Code Optim., vol. 11, no. 1, article 5, Apr. 2014, doi: 10.1145/2629677.
+
+\bibitem{sniper_web}
+    T. E. Carlson, W. Heirman, and L. Eeckhout, "The Sniper Multi-Core Simulator," snipersim.org. [Online]. Available: https://snipersim.org. [Accessed: Apr. 12, 2026].
+\bibitem{acm}
+    J. M. Anderson, L. M. Berc, J. Dean, S. Ghemawat, M. R. Henzinger, S.-T. A. Leung, R. L. Sites, M. T. Vandevoorde, C. A. Waldspurger, and W. E. Weihl, Continuous profiling: where have all the cycles gone?, ACM Trans. Comput. Syst., vol. 15, no. 4, pp. 357--390, Nov. 1997, doi: 10.1145/265924.265925.
+\bibitem{arm}
+    Arm. 2017. ARM Architecture Reference Manual Supplement Statistical
+    Profiling Extension, for ARMv8-A. \url{https://static.docs.arm.com/ddi0586/aDDI0586A_Statistical_Profiling_Extension.pdf}.
+
+\bibitem{micro}
+    J. Dean, J. E. Hicks, C. A. Waldspurger, W. E. Weihl, and G.
+    Chrysos. 1997. ProfileMe: Hardware Support for Instruction-Level Profiling
+    on Out-of-Order Processors. In Proceedings of the International Symposium on
+    Microarchitecture (MICRO). IEEE Computer Society, 292–302.
+\end{thebibliography}
+
+\end{document}
