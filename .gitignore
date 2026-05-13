@@ -331,3 +331,4 @@ out/
 scripts/out/
 microbench/*/bench
 *.png
+!main.pdf
