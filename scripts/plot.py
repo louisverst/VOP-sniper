@@ -19,7 +19,8 @@ class PicsData:
 
         query = ('SELECT pics_d.addr, pics_d.instr_type, base, fe_stall, be_stall, mispred, '
                  'compute, drained, stalled, flushed '
-                 'FROM pics_d INNER JOIN pics_c ON pics_c.addr = pics_d.addr;')
+                 'FROM pics_d INNER JOIN pics_c ON pics_c.addr = pics_d.addr '
+                 'AND pics_c.instr_type = pics_d.instr_type;')
         data = cursor.execute(query).fetchall()
 
         self.addr = [t[0] for t in data]
