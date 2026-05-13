@@ -12,7 +12,6 @@ int num_alloc = 0;
 struct ll* curr_alloc;
 int arr[ASIZE];
 
-//make sure struct occupies an entire cache line.
 struct ll {
   int val;
   struct ll* _next;
@@ -21,12 +20,10 @@ struct ll {
 __attribute__ ((noinline))
 int loop(int zero,struct ll* n) {
   int t = 0,i,iter;
-  for(iter=0; iter < ITERS; ++iter) {
-    struct ll* cur =n;
-    while(cur!=NULL) {
-      t+=cur->val;
-      cur=cur->_next;
-    }
+  struct ll* cur =n;
+  while(cur!=NULL) {
+    t+=cur->val;
+    cur=cur->_next;
   }
   return t;
 }
@@ -51,12 +48,13 @@ int main(int argc, char* argv[]) {
    struct ll *n, *cur;
 
    int i;
+   void* j;
    n=alloc_ll_node();
    cur=n;
    for(i=0;i<LEN;++i) {
      cur->val=i;
      cur->_next=alloc_ll_node();
-     malloc(3*64); // trash the cache
+     j=malloc(3*64); // trash the cache
      cur=cur->_next;
    }
    cur->val=100;

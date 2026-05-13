@@ -66,6 +66,7 @@ def plot(top):
 
     ax.set_ylim(top=bottom.max() * 1.1)
     ax.set_xticks(x, tags, rotation=15, ha='right')
+    ax.set_ylabel('Cycles')
     ax.set_title(TITLE)
     ax.legend()
     fig.tight_layout()

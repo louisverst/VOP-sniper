@@ -21,12 +21,10 @@ struct ll {
 __attribute__ ((noinline))
 int loop(int zero,struct ll* n) {
   int t = 0,i,iter;
-  for(iter=0; iter < ITERS; ++iter) {
     struct ll* cur =n;
     while(cur!=NULL) {
       t+=cur->val;
       cur=cur->_next;
-    }
   }
   return t;
 }
@@ -46,7 +44,7 @@ int main(int argc, char* argv[]) {
    cur->val=100;
    cur->_next=NULL;
 
-   ROI_BEGIN(); 
+   ROI_BEGIN();
    int t=loop(argc,n);
    ROI_END();
 

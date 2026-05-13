@@ -96,6 +96,7 @@ def _plot_dispatch_bars(ax, pics, title):
         _label_nonzero(ax, bars)
     ax.set_ylim(top=bottom.max() * 1.1)
     ax.set_xticks(x, [p.tag for p in pics], rotation=15, ha='right')
+    ax.set_ylabel('Cycles')
     ax.set_title(title)
     ax.legend()
 
@@ -111,6 +112,7 @@ def _plot_commit_bars(ax, pics, title):
         _label_nonzero(ax, bars)
     ax.set_ylim(top=bottom.max() * 1.1)
     ax.set_xticks(x, [p.tag for p in pics], rotation=15, ha='right')
+    ax.set_ylabel('Cycles')
     ax.set_title(title)
     ax.legend()
 

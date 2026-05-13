@@ -20,12 +20,10 @@ struct ll {
 __attribute__ ((noinline))
 int loop(int zero,struct ll* n) {
   int t = 0,i,iter;
-  for(iter=0; iter < ITERS; ++iter) {
-    struct ll* cur =n;
-    while(cur!=NULL) {
-      t+=cur->val;
-      cur=cur->_next;
-    }
+  struct ll* cur =n;
+  while(cur!=NULL) {
+  	t+=cur->val;
+    cur=cur->_next;
   }
   return t;
 }
@@ -35,12 +33,13 @@ int main(int argc, char* argv[]) {
    struct ll *n, *cur;
 
    int i;
+   void* j;
    n=malloc(sizeof(struct ll));
    cur=n;
    for(i=0;i<LEN;++i) {
      cur->val=i;
      cur->_next=malloc(sizeof(struct ll));
-     malloc(3*64); // trash the memory
+     j=malloc(3*64); // trash the memory
      cur=cur->_next;
    }
    cur->val=100;
