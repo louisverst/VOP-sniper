@@ -133,7 +133,7 @@ def plot_pics(data: PicsData, n: int, title: str, save_file: str):
     fig.suptitle(title)
 
     _plot_dispatch_bars(axes[0, 0], _make_dispatch(data, top_d_idx),
-                        f'Largest stacks @ dipatch')
+                        f'Largest stacks @ dispatch')
     _plot_commit_bars  (axes[0, 1], _make_commit  (data, top_c_idx),
                         f'Largest stacks @ commit')
     _plot_dispatch_bars(axes[1, 0], _make_dispatch(data, top_t_idx),
